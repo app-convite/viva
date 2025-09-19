@@ -14,17 +14,60 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <style>
+    /* Estilo mínimo para modal aparecer centralizado */
+    #pixModal {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content-1 {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+    }
+    input, textarea {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      background: #28a745;
+      border: none;
+      color: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #218838;
+    }
+  </style>
 </head>
 <body>
-  <!-- Conteúdo principal do site -->
+  <div class="container text-center mt-5">
+    <h1>Teste de Pagamento PIX</h1>
+    <p>Clique no botão abaixo para abrir o modal e gerar um PIX de teste.</p>
+    <button onclick="document.getElementById('pixModal').style.display='flex'">Abrir Modal PIX</button>
+  </div>
 
   <!-- Modal Pix -->
   <div id="pixModal">
     <div class="modal-content-1">
-
       <!-- Formulário inicial -->
       <div id="formSection">
-        <h3>Antes, precisamos que informe seus dados:</h3>
+        <h3>Informe seus dados:</h3>
         <input type="text" id="nome" placeholder="Nome completo" required>
         <input type="tel" id="whatsapp" placeholder="WhatsApp (somente números)" required>
         <input type="text" id="cpf" placeholder="CPF (somente números)" required>
@@ -38,35 +81,31 @@
         <p><strong>Valor:</strong> <span id="valor"></span></p>
         <p><strong>Chave Pix:</strong></p>
         <textarea id="pixCode" readonly></textarea>
-        <button id="copiarBtn" style="margin-top: 10px;" onclick="copiarPix()">Copiar</button>
+        <button id="copiarBtn" onclick="copiarPix()">Copiar Código</button>
         <p id="aguardandoStatus" style="margin-top: 15px;">⏳ Aguardando pagamento...</p>
       </div>
 
       <!-- Tela de espera -->
       <div id="wait">
-        <h3>Pagamento via Pix</h3>
+        <h3>Gerando pagamento...</h3>
         <img src="./images/loading.gif" alt="Carregando...">
         <p id="waitStatus" style="margin-top: 15px; font-size: 1rem; font-weight: bold;">
           ⏳ Pagamento está sendo gerado!
         </p>
       </div>
+
+      <button style="background:#dc3545;margin-top:15px;" onclick="document.getElementById('pixModal').style.display='none'">Fechar</button>
     </div>
   </div>
 
   <!-- Script de integração Pix -->
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    const precoPorUnidade = (typeof window.precoPorUnidade !== 'undefined') ? window.precoPorUnidade : 0.99;
-    const redirectUrl = (typeof window.redirectUrl !== 'undefined') ? window.redirectUrl : "./ups/up1/";
+    const precoPorUnidade = 0.99; // valor padrão
+    const redirectUrl = "./ups/up1/";
 
     function calcularValorEmCentavos() {
-      if (typeof window.valorGlobal !== 'undefined' && Number(window.valorGlobal) > 0) {
-        return Number(window.valorGlobal);
-      }
-      const numeroEl = document.getElementById('numero');
-      const qtd = numeroEl ? parseInt(numeroEl.value || 0, 10) : 0;
-      if (!qtd || qtd <= 0) return 0;
-      return Math.round(qtd * precoPorUnidade * 100);
+      return Math.round(precoPorUnidade * 100);
     }
 
     function soNumeros(s){ return (s||'').toString().replace(/\D/g,''); }
@@ -82,7 +121,7 @@
       if (!nome || nome.length < 3) { alert('Preencha o nome corretamente.'); return; }
       if (!whatsapp || whatsapp.length < 10) { alert('Preencha o WhatsApp corretamente.'); return; }
       if (!cpf || cpf.length !== 11) { alert('Preencha o CPF com 11 dígitos.'); return; }
-      if (!valor || valor <= 0) { alert('Selecione uma cota antes de gerar o pagamento.'); return; }
+      if (!valor || valor <= 0) { alert('Valor inválido.'); return; }
 
       const formSection = document.getElementById('formSection');
       const wait = document.getElementById('wait');
@@ -92,7 +131,6 @@
       if (wait) wait.style.display = 'block';
 
       try {
-        // Envio em FormData para compatibilidade com PHP ($_POST)
         const fd = new FormData();
         fd.append('nome', nome.trim());
         fd.append('whatsapp', whatsapp);
@@ -102,8 +140,7 @@
         const resp = await fetch('./gerar.php', {
           method: 'POST',
           headers: { 'Accept': 'application/json' },
-          body: fd,
-          credentials: 'same-origin'
+          body: fd
         });
 
         if (!resp.ok) {
@@ -114,7 +151,7 @@
         const text = await resp.text();
         let data;
         try { data = JSON.parse(text); } 
-        catch { throw new Error('Resposta inválida do servidor: ' + text); }
+        catch { throw new Error('Resposta inválida: ' + text); }
 
         if (data.error) throw new Error(data.error);
 
@@ -125,7 +162,6 @@
         document.getElementById('qrcode').src = data.pixqrcode || '';
         document.getElementById('valor').innerText = (valor/100).toFixed(2).replace('.',',');
 
-        if (data.id_transaction) verificarStatus(data.id_transaction);
       } catch (err) {
         console.error('Erro ao gerar PIX:', err);
         alert('Erro ao gerar pagamento: ' + (err.message || err));
@@ -133,33 +169,6 @@
         if (wait) wait.style.display = 'none';
       }
     };
-
-    async function verificarStatus(transactionId) {
-      const statusEl = document.getElementById('aguardandoStatus');
-      const interval = setInterval(async () => {
-        try {
-          const resp = await fetch('./status.php?transaction_id=' + encodeURIComponent(transactionId), {
-            headers: { 'Accept': 'application/json' },
-            credentials: 'same-origin'
-          });
-          if (!resp.ok) return;
-
-          const text = await resp.text();
-          let data;
-          try { data = JSON.parse(text); } 
-          catch { return; }
-
-          const status = (data.status || '').toLowerCase();
-          if (status === 'paid' || status === 'pago') {
-            clearInterval(interval);
-            if (statusEl) statusEl.innerText = '✅ Pagamento confirmado!';
-            setTimeout(() => window.location.href = redirectUrl, 1500);
-          }
-        } catch (err) {
-          console.error('Erro ao consultar status:', err);
-        }
-      }, 5000);
-    }
 
     window.copiarPix = async function() {
       const pixInput = document.getElementById('pixCode');
@@ -178,7 +187,7 @@
       }
     };
 
-    // Inicialização
+    // Estado inicial
     if (document.getElementById('pixData')) document.getElementById('pixData').style.display = 'none';
     if (document.getElementById('wait')) document.getElementById('wait').style.display = 'none';
   });
